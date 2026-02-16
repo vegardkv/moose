@@ -1,0 +1,21 @@
+[Unit]
+Description=Moose - Self-updating async job runner
+After=network.target
+
+[Service]
+Type=simple
+User=YOUR_USER
+WorkingDirectory=/path/to/moose
+ExecStart=/usr/bin/env uv run main.py
+Restart=on-failure
+RestartSec=10
+
+# Ensure uv and git are on PATH
+Environment="PATH=/usr/local/bin:/usr/bin:/bin"
+
+# Optional: limit resources
+# MemoryMax=512M
+# CPUQuota=50%
+
+[Install]
+WantedBy=multi-user.target
