@@ -1,13 +1,14 @@
 """Discord webhook notifications."""
 
 from datetime import UTC, datetime
+from typing import Literal
 
 import aiohttp
 
 from moose.config import DISCORD_WEBHOOK_URL
 
 
-async def send_discord(message: str, level: str = "info") -> None:
+async def send_discord(message: str, level: Literal["info", "warning", "error"] = "info") -> None:
     """
     Send a message to Discord via webhook.
 
