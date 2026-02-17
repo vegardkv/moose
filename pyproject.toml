@@ -10,5 +10,61 @@ dependencies = [
     "aiohttp>=3.9.0",
 ]
 
+[dependency-groups]
+dev = [
+    "ruff>=0.8.0",
+    "ty>=0.0.17",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.ruff]
+# Set the maximum line length to 100
+line-length = 100
+
+# Target Python 3.11+
+target-version = "py311"
+
+# Exclude common directories
+exclude = [
+    ".git",
+    ".venv",
+    "__pycache__",
+    "build",
+    "dist",
+]
+
+[tool.ruff.lint]
+# Enable standard rule sets
+select = [
+    "E",     # pycodestyle errors
+    "W",     # pycodestyle warnings
+    "F",     # pyflakes
+    "I",     # isort
+    "N",     # pep8-naming
+    "UP",    # pyupgrade
+    "B",     # flake8-bugbear
+    "C4",    # flake8-comprehensions
+    "SIM",   # flake8-simplify
+    "RUF",   # Ruff-specific rules
+]
+
+# Ignore specific rules if needed
+ignore = [
+    "E501",  # Line too long (handled by formatter)
+]
+
+# Allow autofix for all enabled rules
+fixable = ["ALL"]
+unfixable = []
+
+[tool.ruff.format]
+# Use double quotes for strings
+quote-style = "double"
+
+# Indent with spaces
+indent-style = "space"
+
+# Use Unix line endings
+line-ending = "auto"

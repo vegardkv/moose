@@ -1,6 +1,8 @@
 """Centralised configuration with fail-fast validation."""
+
 import os
 import sys
+
 from dotenv import load_dotenv
 
 # Load environment variables from .env
