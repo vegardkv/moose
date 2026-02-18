@@ -13,3 +13,56 @@ Some dependencies I assume I will use:
 2. dotenv for secret management
 3. async as default
 4. push notifications to signal (or something else, depending on ease of implementation)
+
+## Threading Architecture
+
+```
+┌───────────────────────────────────────────────────────────────────┐
+│ MAIN PROCESS (main.py)                                            │
+│ ┌───────────────────────────────────────────────────────────────┐ │
+│ │ Main Thread (Synchronous)                                     │ │
+│ │                                                               │ │
+│ │  while True:                                                  │ │
+│ │    ├─ time.sleep(POLL_INTERVAL)    [BLOCKS THREAD]            │ │
+│ │    ├─ subprocess: git pull          [BLOCKS THREAD]           │ │
+│ │    │                                                          │ │
+│ │    └─ subprocess: uv run jobs.py    [BLOCKS THREAD]           │ │
+│ │         │                                                     │ │
+│ │         │  Spawns new process ───────────────────────┐        │ │
+│ │         │                                            │        │ │
+│ │         └─ Waits for process to exit                 │        │ │
+│ │                                                      │        │ │
+│ │  Temporary event loops for notifications:            │        │ │
+│ │    └─ asyncio.run(send_discord(...))                 │        │ │
+│ └──────────────────────────────────────────────────────┼────────┘ │
+└────────────────────────────────────────────────────────┼──────────┘
+                                                         │
+                                                         ▼
+       ┌──────────────────────────────────────────────────────────┐
+       │ JOBS PROCESS (jobs.py)                                   │
+       │ ┌──────────────────────────────────────────────────────┐ │
+       │ │ Main Thread with AsyncIO Event Loop                  │ │
+       │ │                                                      │ │
+       │ │  asyncio.run(run_all_jobs()):                        │ │
+       │ │    │                                                 │ │
+       │ │    ├─ Job 1: await job.run()  [ASYNC, TIMEOUT]       │ │
+       │ │    │   ├─ Concurrent async tasks possible            │ │
+       │ │    │   └─ Returns/Times out                          │ │
+       │ │    │                                                 │ │
+       │ │    ├─ Job 2: await job.run()  [ASYNC, TIMEOUT]       │ │
+       │ │    │   └─ Next job doesn't start until prev done     │ │
+       │ │    │                                                 │ │
+       │ │    └─ Job N: await job.run()  [ASYNC, TIMEOUT]       │ │
+       │ │        └─ Sequential execution                       │ │
+       │ │                                                      │ │
+       │ │  Process exits with code 0 (success) or 1 (fail)     │ │
+       │ └──────────────────────────────────────────────────────┘ │
+       └──────────────────────────────────────────────────────────┘
+
+Key Points:
+- main.py runs continuously in a single synchronous thread
+- jobs.py runs as a separate subprocess, spawned on each poll cycle
+- Jobs execute SEQUENTIALLY (one after another), not in parallel
+- Individual jobs are async and can use asyncio internally
+- Main process blocks while waiting for jobs subprocess to complete
+```
