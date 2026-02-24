@@ -2,7 +2,7 @@ import logging
 import os
 
 from dotenv import load_dotenv
-from finnbruktbil import db
+from finnbruktbil import db, aux_data_parser
 from finnbruktbil.cli.config import DownloadConfig, FetchIdsConfig
 from finnbruktbil.cli.download_data import download_ads
 from finnbruktbil.cli.fetch_ids import fetch_ids_into_db
@@ -38,10 +38,16 @@ class FinnCarsJob(Job):
         load_dotenv()
         db.SUPABASE_KEY = os.getenv("FINN_SUPABASE_KEY", db.SUPABASE_KEY)
         db.SUPABASE_URL = os.getenv("FINN_SUPABASE_URL", db.SUPABASE_URL)
+        aux_data_parser.OPENAI_API_KEY = os.getenv("FINN_OPENAI_API_KEY", aux_data_parser.OPENAI_API_KEY)
 
     @property
     def name(self) -> str:
         return "finn_cars"
+
+    @property
+    def timeout(self) -> int:
+        # This job can take a while if there are many ads to download
+        return 600
 
     async def run(self) -> None:
         """Fetch and download car listings from Finn.no."""

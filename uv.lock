@@ -467,7 +467,7 @@ wheels = [
 [[package]]
 name = "finnbruktbil"
 version = "0.1.0"
-source = { git = "https://github.com/vegardkv/finn-bruktbil#5aba9eb181e06b69e0fe825252a32bcdf4bf5ade" }
+source = { git = "https://github.com/vegardkv/finn-bruktbil#11544945db85c9386a1d9b2632d5a70f5a6f8aa2" }
 dependencies = [
     { name = "numpy" },
     { name = "openai" },
