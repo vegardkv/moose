@@ -6,12 +6,14 @@ import time
 
 from moose.job import Job, JobResult
 from moose.modules.example_job import ExampleJob
+from moose.modules.finn_cars_job import FinnCarsJob
 from moose.notifications import send_discord
 
 logger = logging.getLogger(__name__)
 
 # Job registry - add your jobs here
 JOBS: list[Job] = [
+    FinnCarsJob(),
     ExampleJob(),
 ]
 

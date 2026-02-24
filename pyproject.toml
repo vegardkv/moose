@@ -12,6 +12,7 @@ dependencies = [
     "supabase>=2.0.0",
     "python-dotenv>=1.0.0",
     "aiohttp>=3.9.0",
+    "finnbruktbil",
 ]
 
 [dependency-groups]
@@ -72,3 +73,6 @@ indent-style = "space"
 
 # Use Unix line endings
 line-ending = "auto"
+
+[tool.uv.sources]
+finnbruktbil = { git = "https://github.com/vegardkv/finn-bruktbil" }
