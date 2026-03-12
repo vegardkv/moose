@@ -1,4 +1,13 @@
+// .devcontainer/devcontainer.json
 {
-  "name": "Ubuntu + uv",
-  "image": "ghcr.io/metinsenturk/devcontainer-templates/python-uv:1.0.5"
+  "name": "Python + uv",
+  "image": "mcr.microsoft.com/devcontainers/python:3.12",
+
+  // Install system dependencies before running the postCreate script
+  "onCreateCommand": "sudo apt-get update",
+
+  // Then set up your uv-based environment
+  "postCreateCommand": "bash ./.devcontainer/postCreateCommand.sh",
+
+  "workspaceFolder": "/workspaces/${localWorkspaceFolderBasename}"
 }
