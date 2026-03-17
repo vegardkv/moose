@@ -5,37 +5,47 @@ import logging
 import time
 
 from moose.job import Job, JobResult
+from moose.models import JobId, JobsSpec
 from moose.modules.example_job import ExampleJob
 from moose.modules.finn_cars_job import FinnCarsJob
 from moose.notifications import send_discord
 
 logger = logging.getLogger(__name__)
 
-# Job registry - add your jobs here
-JOBS: list[Job] = [
-    FinnCarsJob(),
-    ExampleJob(),
-]
+# Explicit registry: add new jobs here alongside a new JobId variant.
+JOB_REGISTRY: dict[JobId, type[Job]] = {
+    JobId.FINN_CARS: FinnCarsJob,
+    JobId.EXAMPLE_JOB: ExampleJob,
+}
 
 
-async def run_all_jobs() -> list[JobResult]:
+async def run_all_jobs(spec: JobsSpec) -> list[JobResult]:
     """
-    Run all registered jobs with timeout and error isolation.
+    Run jobs defined in *spec* with timeout and error isolation.
+
+    Args:
+        spec: Specification of which jobs to run and their settings.
 
     Returns:
-        List of JobResult for each job executed
+        List of JobResult for each job executed.
     """
     results: list[JobResult] = []
 
-    logger.info(f"Starting job run with {len(JOBS)} job(s)")
+    logger.info(f"Starting job run with {len(spec.jobs)} job(s)")
 
-    for job in JOBS:
-        logger.info(f"Running job: {job.name} (timeout: {job.timeout}s)")
+    for entry in spec.jobs:
+        job = JOB_REGISTRY[entry.job_id]()
+
+        # Timeout resolution: per-job config → spec default → Job.timeout ABC property
+        timeout = entry.timeout_seconds if entry.timeout_seconds is not None else spec.default_timeout_seconds
+        timeout = timeout if timeout is not None else job.timeout
+
+        logger.info(f"Running job: {job.name} (timeout: {timeout}s)")
         start_time = time.time()
 
         try:
             # Run job with timeout
-            await asyncio.wait_for(job.run(), timeout=job.timeout)
+            await asyncio.wait_for(job.run(), timeout=timeout)
 
             # Success
             duration = time.time() - start_time
@@ -51,7 +61,7 @@ async def run_all_jobs() -> list[JobResult]:
         except TimeoutError:
             # Job timed out
             duration = time.time() - start_time
-            error_msg = f"Job {job.name} timed out after {job.timeout}s"
+            error_msg = f"Job {job.name} timed out after {timeout}s"
             logger.error(error_msg)
             results.append(
                 JobResult(
