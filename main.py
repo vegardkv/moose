@@ -1,10 +1,9 @@
 """Moose - Self-updating async job runner with git-pull loop."""
 
+import argparse
 import asyncio
 import logging
 import subprocess
-import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -18,7 +17,19 @@ from moose.notifications import send_discord
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_CONFIG_PATH = Path("config/jobs.json")
+DEFAULT_CONFIG = Path("config/jobs.json")
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description="Moose job runner daemon.")
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=DEFAULT_CONFIG,
+        metavar="PATH",
+        help=f"Path to jobs config file (default: {DEFAULT_CONFIG})",
+    )
+    return parser.parse_args()
 
 
 def load_spec(config_path: Path) -> JobsSpec | None:
@@ -63,44 +74,49 @@ def run_git_pull() -> bool:
         return False
 
 
-def _get_eligible_spec(spec: JobsSpec, last_run: dict[str, float], now: float) -> JobsSpec:
-    """Return a copy of *spec* containing only jobs eligible to run given *last_run* timestamps."""
+def _get_eligible_ids(spec: JobsSpec, last_run: dict[str, float], now: float) -> list[str]:
+    """Return job IDs from *spec* that are eligible to run given *last_run* timestamps."""
     eligible = []
     for entry in spec.jobs:
         jid = str(entry.job_id)
         elapsed = now - last_run.get(jid, 0.0)
         if elapsed >= entry.min_interval_seconds:
-            eligible.append(entry)
+            eligible.append(jid)
         else:
             remaining = entry.min_interval_seconds - elapsed
-            logger.info(f"Skipping {jid}: next run in {remaining:.0f}s (min_interval={entry.min_interval_seconds}s)")
-    return spec.model_copy(update={"jobs": eligible})
+            logger.info(
+                f"Skipping {jid}: next run in {remaining:.0f}s"
+                f" (min_interval={entry.min_interval_seconds}s)"
+            )
+    return eligible
 
 
-def run_jobs(eligible_spec: JobsSpec) -> bool:
+def run_jobs(config_path: Path, spec: JobsSpec, job_ids: list[str]) -> bool:
     """
-    Write *eligible_spec* to a temp file and invoke jobs.py against it.
+    Invoke jobs.py for *job_ids* with a timeout derived from *spec*.
 
     Returns:
         True if successful, False otherwise
     """
+    entries = {e.job_id: e for e in spec.jobs}
     total_timeout = (
-        sum(e.timeout_seconds or eligible_spec.default_timeout_seconds for e in eligible_spec.jobs)
+        sum(
+            entries[jid].timeout_seconds or spec.default_timeout_seconds
+            for jid in job_ids
+            if jid in entries
+        )
         + 30  # buffer for startup/shutdown
     )
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as tf:
-        tf.write(eligible_spec.model_dump_json())
-        tmp_path = Path(tf.name)
-
     try:
         result = subprocess.run(
-            ["uv", "run", "jobs.py", str(tmp_path)],
+            ["uv", "run", "jobs.py", "--config", str(config_path), *job_ids],
             capture_output=True,
             text=True,
             timeout=total_timeout,
         )
 
+        # Log output regardless of success/failure
         if result.stdout:
             for line in result.stdout.strip().split("\n"):
                 logger.info(f"[jobs.py] {line}")
@@ -120,22 +136,20 @@ def run_jobs(eligible_spec: JobsSpec) -> bool:
     except Exception as e:
         logger.error(f"Jobs execution error: {e}")
         return False
-    finally:
-        tmp_path.unlink(missing_ok=True)
 
 
 def main() -> None:
     """Main poll loop: git pull → run eligible jobs → sleep → repeat.
 
-    Usage: main.py [config_path]  (default: config/jobs.json)
+    Usage: main.py [--config PATH]  (default: config/jobs.json)
     """
     setup_logging()
+    args = parse_args()
+    config_path: Path = args.config
 
-    config_path = Path(sys.argv[1]) if len(sys.argv) > 1 else DEFAULT_CONFIG_PATH
-
-    # Fail fast if config is missing/invalid before entering the loop
+    # Fail fast before entering the loop
     if load_spec(config_path) is None:
-        sys.exit(1)
+        return
 
     logger.info("🦌 Moose started")
     asyncio.run(send_discord("🦌 Moose started", "info"))
@@ -154,7 +168,6 @@ def main() -> None:
                 if not git_pull_failed_last_cycle:
                     asyncio.run(send_discord("⚠️ Git pull failed, skipping jobs this cycle", "warning"))
                 git_pull_failed_last_cycle = True
-                logger.info("Skipping jobs due to git pull failure")
                 continue
             git_pull_failed_last_cycle = False
 
@@ -165,16 +178,16 @@ def main() -> None:
                 continue
 
             now = time.time()
-            eligible_spec = _get_eligible_spec(spec, last_run, now)
-            if not eligible_spec.jobs:
+            eligible_ids = _get_eligible_ids(spec, last_run, now)
+            if not eligible_ids:
                 logger.info("No eligible jobs this cycle")
                 continue
 
-            # Mark jobs as attempted before running (crash-safe)
-            for entry in eligible_spec.jobs:
-                last_run[str(entry.job_id)] = now
+            # Mark as attempted before running (crash-safe)
+            for jid in eligible_ids:
+                last_run[jid] = now
 
-            run_jobs(eligible_spec)
+            run_jobs(config_path, spec, eligible_ids)
             logger.info("Poll cycle complete")
 
     except KeyboardInterrupt:
